@@ -23,6 +23,7 @@ class mmm():
         self.likelihood_aic = 0
 
     def predict(self, observations):
+        # likelihood of new observations
         log_pi      = log_inf(self.pi)
         log_alpha   = log_inf(self.prior)
         log_A       = log_inf(self.transition_probs)
@@ -57,12 +58,17 @@ class mmm():
         #   z            : posterior distribution of the mixture p(z|\Xbf, pi, rho, A) [or posterior of the latent variables]
         #   likelihood   : likelihood of each iterations
 
+        
         self.n_observations = len(observations) # number of sequences
         self.dim_state_space  = len(np.unique(list(itertools.chain(*observations))))
+
+        # Computation of the transition matrix
         trans_matrix = map(lambda x: compute_transition_matrix(x, self.dim_state_space), observations)
         trans_matrix = np.array(trans_matrix).transpose()
         trans_matrix = np.reshape(trans_matrix,(self.dim_state_space*self.dim_state_space, self.n_observations))
-        
+
+
+        # Initial state
         x1           = np.zeros((self.dim_state_space, self.n_observations))
         for s in range(self.n_observations):
             x1[observations[s][0], s] = 1
@@ -72,13 +78,16 @@ class mmm():
         self.prior = normalize(np.random.rand(self.n_cluster, 1))
         self.pi    = normalize(np.random.rand(self.dim_state_space, self.n_cluster))
         self.transition_probs     = normalize(np.random.rand(self.dim_state_space, self.dim_state_space, self.n_cluster))
-        self.posterior     = np.zeros((self.n_cluster,self.n_observations))
+        self.posterior     = np.zeros((self.n_cluster, self.n_observations))
 
+        # Initialization of the likelihood vector
         likelihood = np.zeros(max_iter)
         diff_likelihood = 100
 
+        
         for iter in range(max_iter):
-            ## !!! LOGSAFE !
+
+            # Parameters to compute the log likelihood
             log_pi      = log_inf(self.pi)
             log_alpha   = log_inf(self.prior)
             log_A       = log_inf(self.transition_probs)
@@ -92,18 +101,24 @@ class mmm():
             # |  .                                                                               |
             # |  p(z_1=K)p_\theta(x_1|z_1=K)                        p(z_S=K)p_\theta(x_S|z_S=K)  |
             # )
-            llikehood_iter = np.dot(log_pi.transpose(),x1) + \
+
+            # Log likelihood of this iteration
+            llikehood_iter = np.dot(log_pi.transpose(), x1) + \
                              np.dot(log_A.transpose(), trans_matrix) + \
-                             np.dot(log_alpha,np.ones((1,self.n_observations)))
+                             np.dot(log_alpha, np.ones((1,self.n_observations)))
+
+            # NAN 
             if (np.isnan(llikehood_iter)).any():
                 print('likelihood na')
                 break
-                
+
             self.posterior              = normalize_exp(llikehood_iter)
 
             # M-step:
-            self.pi      = normalize(np.dot(x1,self.posterior.transpose()))  # dim= dim_state_spacexn_cluster
-            self.transition_probs       = normalize(np.reshape(np.dot(trans_matrix,self.posterior.transpose()), (self.dim_state_space,self.dim_state_space,self.n_cluster)))
+            self.pi      = normalize(np.dot(x1, self.posterior.transpose()))  # dim= dim_state_spacexn_cluster
+            self.transition_probs       = normalize(np.reshape(np.dot(trans_matrix,self.posterior.transpose()), \
+                                                               (self.dim_state_space,self.dim_state_space,self.n_cluster)))
+            
             if np.isnan(self.transition_probs).any():
                 print('A na')
                 break
@@ -118,10 +133,13 @@ class mmm():
                 likelihood = likelihood[0:iter]
                 break
 
+
+        # Computation of the sample size and degree of freedom for BIC/AIC:
+        # https://en.wikipedia.org/wiki/Akaike_information_criterion        
         sample_size    = np.sum(np.array(map(lambda x: len(x), observations)))
         n_free         = np.prod(self.pi.shape) + \
-                         np.prod(self.transition_probs.shape) +\
-                         np.prod(self.prior.shape) -\
+                         np.prod(self.transition_probs.shape) + \
+                         np.prod(self.prior.shape) - \
                          self.transition_probs.shape[0] - self.pi.shape[0] - 1
         # n_free = parameters to estimate - normalization
         self.likelihood_bic = -2*(likelihood[-1]) + n_free*np.log(sample_size)
@@ -132,7 +150,9 @@ class mmm():
 
     def plot_transition_matrix(self, cluster=0, title="",\
                                   ticks=['home','mediation','search',\
-                                    'download','consult']):
+                                         'download','consult']):
+
+        # Plot function for datavisualization
         data = self.transition_probs[:,:,cluster].transpose()
         prior = self.pi[:,cluster].transpose()
         fig = plt.figure()
@@ -165,10 +185,11 @@ class mmm():
         # cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
         # fig.colorbar(cax2, cax=cbar_ax)
 
-#http://stackoverflow.com/questions/13219041/how-can-i-speed-up-transition-matrix-creation-in-numpy
+
+
 def compute_transition_matrix(x, n, norm=0):
-    """Compute the transition matrix from the data X
-    """
+    # Compute the transition matrix from data (see
+    # http://stackoverflow.com/questions/13219041/how-can-i-speed-up-transition-matrix-creation-in-numpy)
     flat_coords                  = np.ravel_multi_index((x[:-1], x[1:]), (n, n))
     trans_matrix                 = np.bincount(flat_coords, minlength=n*n).reshape((n, n))
     return trans_matrix
@@ -193,7 +214,7 @@ def normalize_exp(X):
 
 def normalize(X):
     # Normalize each columns of X
-    # Il y a beaucoup mieux à faire ici !
+    # TODO: could be way better
     X_size = X.shape
     col_sums = X.sum(axis=0)
     col_sums = col_sums# + (col_sums==0)
@@ -209,6 +230,7 @@ def normalize(X):
 
 
 def get_list_actions_v2(df_list_sessions, possible_actions=['homepage','mediation','sru','download','navigation']):
+    # Transform a binary n dimension dataframe into categorial vector
     list_actions = []
     nactions = len(possible_actions)
     idx = -1
@@ -225,26 +247,3 @@ def get_list_actions_v2(df_list_sessions, possible_actions=['homepage','mediatio
 
 
 
-# import pymmm
-
-
-# observations = []
-# observations.append([0, 2 ,2, 2, 4])
-# observations.append([0, 1, 2 ,4, 4, 4, 1, 1])
-# observations.append([0, 3, 2 ,2, 2, 1, 1, 1])
-# observations.append([0, 1, 2 ,2, 2, 1, 1, 1])
-# observations.append([0, 2, 2 ,2, 2, 1, 1, 1])
-# observations.append([0, 1, 2 ,2, 2, 1, 1, 1])
-# observations.append([0, 3, 2 ,2, 2, 4, 0, 1])
-# observations.append([0, 1, 2 ,1, 2, 0, 0, 1])
-
-
-# model = pymmm.mmm(n_cluster=2)
-# model.fit(observations)
-
-
-# obs = []
-# obs.append([0, 3, 2 ,0, 0, 1, 1, 1])
-# obs.append([0, 3, 2 ,2, 2, 1, 1, 1])
-# obs.append([0, 1, 1 ,1, 2, 2, 1, 1])
-# z=model.predict(obs)
