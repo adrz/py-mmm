@@ -11,5 +11,5 @@ setup(name='py-mmm',
       author_email='adrien.nouvellet@gmail.com',
       license='MIT',
       packages=find_packages(exclude=('tests', 'tests.*')),
-      install_requires=["pandas","numpy"],
+      install_requires=["matplotlib", "numpy"],
       zip_safe=False)
